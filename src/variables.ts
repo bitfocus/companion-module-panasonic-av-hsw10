@@ -1,6 +1,6 @@
-import type { ModuleInstance } from './main.js'
+import type { AvHsw10 } from './main.js'
 
-export function UpdateVariableDefinitions(self: ModuleInstance): void {
+export function UpdateVariableDefinitions(self: AvHsw10): void {
 	self.setVariableDefinitions([
 		{ variableId: 'variable1', name: 'My first variable' },
 		{ variableId: 'variable2', name: 'My second variable' },

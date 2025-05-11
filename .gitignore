@@ -5,3 +5,5 @@ package-lock.json
 /dist
 DEBUG-*
 /.yarn
+/.vscode
+panasonic-av-hsw10-*.tgz

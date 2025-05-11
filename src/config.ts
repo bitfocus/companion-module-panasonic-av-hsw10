@@ -10,18 +10,19 @@ export function GetConfigFields(): SomeCompanionConfigField[] {
 		{
 			type: 'textinput',
 			id: 'host',
-			label: 'Target IP',
+			label: 'Hostname / IP',
 			width: 8,
-			regex: Regex.IP,
+			regex: Regex.HOSTNAME,
+			default: '192.168.0.8',
 		},
 		{
 			type: 'number',
 			id: 'port',
-			label: 'Target Port',
+			label: 'Port',
 			width: 4,
 			min: 1,
 			max: 65535,
-			default: 8000,
+			default: 62000,
 		},
 	]
 }

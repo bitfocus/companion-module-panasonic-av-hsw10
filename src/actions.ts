@@ -1,6 +1,6 @@
-import type { ModuleInstance } from './main.js'
+import type { AvHsw10 } from './main.js'
 
-export function UpdateActions(self: ModuleInstance): void {
+export function UpdateActions(self: AvHsw10): void {
 	self.setActionDefinitions({
 		sample_action: {
 			name: 'My First Action',
