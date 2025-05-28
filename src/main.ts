@@ -4,20 +4,24 @@ import {
 	InstanceStatus,
 	SomeCompanionConfigField,
 	TCPHelper,
+	UDPHelper,
 } from '@companion-module/base'
 import { GetConfigFields, type ModuleConfig } from './config.js'
 import { UpdateVariableDefinitions } from './variables.js'
 import { UpgradeScripts } from './upgrades.js'
 import { UpdateActions } from './actions.js'
 import { UpdateFeedbacks } from './feedbacks.js'
+import { Messages, MsgSyntax, CrosspointControlBusSelection } from './enums.js'
 import PQueue from 'p-queue'
 
 const MESSAGE_INTERVAL = 16
-//const CONNECTION_TIMEOUT = 20000
+const CONNECTION_TIMEOUT = 20000
 
 export class AvHsw10 extends InstanceBase<ModuleConfig> {
 	config!: ModuleConfig // Setup in init()
 	socket!: TCPHelper
+	udpListener!: UDPHelper
+	keepAliveTimer!: NodeJS.Timeout
 	queue = new PQueue({ concurrency: 1, interval: MESSAGE_INTERVAL, intervalCap: 1 })
 	constructor(internal: unknown) {
 		super(internal)
@@ -31,33 +35,117 @@ export class AvHsw10 extends InstanceBase<ModuleConfig> {
 		this.updateActions() // export actions
 		this.updateFeedbacks() // export feedbacks
 		this.updateVariableDefinitions() // export variable definitions
+		this.configUpdated(config).catch(() => {})
+	}
+
+	async configUpdated(config: ModuleConfig): Promise<void> {
+		this.queue.clear()
+		this.config = config
+		this.initTcp(config.host, config.port)
+		this.initUdp(config.host, config.portRecieve)
 	}
 	// When module gets deleted
 	async destroy(): Promise<void> {
 		this.log('debug', `destroy ${this.id}:${this.label}`)
 		this.queue.clear()
 		if (this.socket) this.socket.destroy()
+		if (this.udpListener) this.udpListener.destroy()
 	}
 
-	async configUpdated(config: ModuleConfig): Promise<void> {
-		this.queue.clear()
-		this.config = config
+	private startKeepAlive(timeout: number = CONNECTION_TIMEOUT): void {
+		if (this.keepAliveTimer) clearTimeout(this.keepAliveTimer)
+		this.keepAliveTimer = setTimeout(() => {
+			this.sendMessage(Messages.BusStatusQuery, CrosspointControlBusSelection.PGM).catch(() => {})
+		}, timeout / 2)
+	}
+
+	public async sendMessage(command: Messages, ...params: string[]): Promise<boolean> {
+		return this.queue.add(async () => {
+			if (this.socket && this.socket.isConnected) {
+				let msg = MsgSyntax.Stx + command
+				for (let i = 0; i < params.length; i++) {
+					msg += MsgSyntax.Sep + params[i]
+				}
+				msg += MsgSyntax.Etx
+				const sent = await this.socket.send(msg)
+				if ((this.config.verbose && sent) || !sent) {
+					this.log(sent ? 'debug' : 'warn', sent ? `Message sent: ${msg}` : `Message send failed: ${msg}`)
+				}
+				this.startKeepAlive()
+				return sent
+			}
+			this.log('warn', `Not connected! Could not send ${command}: ${params}`)
+			return false
+		}) as Promise<boolean>
+	}
+
+	private initTcp(host: string, port: number) {
+		if (this.socket) this.socket.destroy()
+		const errorEvent = (err: Error) => {
+			this.log('error', JSON.stringify(err))
+		}
+		const endEvent = () => {
+			this.log('warn', `Disconnected from ${host}`)
+		}
+		const connectEvent = () => {
+			this.updateStatus(InstanceStatus.Ok)
+		}
+		const dataEvent = (d: Buffer<ArrayBufferLike>) => {
+			if (this.config.verbose) this.log('debug', `Data received: ${d}`)
+		}
+		const statusChangeEvent = (status: InstanceStatus, message: string | undefined) => {
+			this.updateStatus(status, message ?? '')
+		}
+		if (host.trim() == '') {
+			this.updateStatus(InstanceStatus.BadConfig, `No host`)
+			this.log('error', `No host defined`)
+			return
+		}
+		this.updateStatus(InstanceStatus.Connecting, `Connecting to ${host.trim()}:${port}`)
+		this.socket = new TCPHelper(host.trim(), port)
+		this.socket.on('error', errorEvent)
+		this.socket.on('end', endEvent)
+		this.socket.on('connect', connectEvent)
+		this.socket.on('data', dataEvent)
+		this.socket.on('status_change', statusChangeEvent)
+	}
+
+	private initUdp(host: string, port: number): void {
+		try {
+			if (this.udpListener) this.udpListener.destroy()
+			this.udpListener = new UDPHelper(host, port, { bind_port: port })
+			this.udpListener.on('data', (msg, _rInfo) => {
+				console.log(`UDP Message recieved: ${msg.toString()}`)
+			})
+			this.udpListener.on('error', (err: Error) => {
+				this.log('error', `Error from UDP Listener: ${JSON.stringify(err)}`)
+			})
+			this.udpListener.on('listening', () => {
+				this.log('debug', `Listening for UDP messages on 0.0.0.0:${port}`)
+			})
+			this.udpListener.on('status_change', (status, msg) => {
+				this.updateStatus(status, msg ?? '')
+			})
+		} catch (e) {
+			this.updateStatus(InstanceStatus.UnknownError)
+			this.log('error', `Error setting up UDP Listener:\n${JSON.stringify(e)}`)
+		}
 	}
 
 	// Return config fields for web config
-	getConfigFields(): SomeCompanionConfigField[] {
+	public getConfigFields(): SomeCompanionConfigField[] {
 		return GetConfigFields()
 	}
 
-	updateActions(): void {
+	private updateActions(): void {
 		UpdateActions(this)
 	}
 
-	updateFeedbacks(): void {
+	private updateFeedbacks(): void {
 		UpdateFeedbacks(this)
 	}
 
-	updateVariableDefinitions(): void {
+	private updateVariableDefinitions(): void {
 		UpdateVariableDefinitions(this)
 	}
 }

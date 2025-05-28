@@ -1,33 +1,14 @@
-import { combineRgb } from '@companion-module/base'
+import { combineRgb, type CompanionFeedbackDefinitions } from '@companion-module/base'
 import type { AvHsw10 } from './main.js'
 
+export const colours = {
+	black: combineRgb(0, 0, 0),
+	white: combineRgb(255, 255, 255),
+	red: combineRgb(255, 0, 0),
+	green: combineRgb(0, 204, 0),
+}
+
 export function UpdateFeedbacks(self: AvHsw10): void {
-	self.setFeedbackDefinitions({
-		ChannelState: {
-			name: 'Example Feedback',
-			type: 'boolean',
-			defaultStyle: {
-				bgcolor: combineRgb(255, 0, 0),
-				color: combineRgb(0, 0, 0),
-			},
-			options: [
-				{
-					id: 'num',
-					type: 'number',
-					label: 'Test',
-					default: 5,
-					min: 0,
-					max: 10,
-				},
-			],
-			callback: (feedback) => {
-				console.log('Hello world!', feedback.options.num)
-				if (Number(feedback.options.num) > 5) {
-					return true
-				} else {
-					return false
-				}
-			},
-		},
-	})
+	const feedbackDefs: CompanionFeedbackDefinitions = {}
+	self.setFeedbackDefinitions(feedbackDefs)
 }

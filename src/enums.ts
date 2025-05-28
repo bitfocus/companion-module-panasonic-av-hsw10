@@ -136,7 +136,7 @@ export enum SourceNameClassicifcation {
 	USER = '01',
 }
 
-export enum SourceNameObkect {
+export enum SourceNameObject {
 	IN1 = '01',
 	IN2 = '02',
 	IN3 = '03',
@@ -171,6 +171,11 @@ export enum SettingForAuxTransitionOperationSetting {
 	TiggerOn = '0',
 	OnTake = '1',
 	OffTake = '2',
+}
+
+export enum BusType {
+	AUX1 = '01',
+	AUX2 = '02',
 }
 
 export enum BusTransitionResponseEnable {
