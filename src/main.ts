@@ -16,12 +16,14 @@ import PQueue from 'p-queue'
 
 const MESSAGE_INTERVAL = 16
 const CONNECTION_TIMEOUT = 20000
+const RECONNECT_INTERVAL = 10000
 
 export class AvHsw10 extends InstanceBase<ModuleConfig> {
 	config!: ModuleConfig // Setup in init()
 	socket!: TCPHelper
 	udpListener!: UDPHelper
 	keepAliveTimer!: NodeJS.Timeout
+	reconnectTimer!: NodeJS.Timeout
 	queue = new PQueue({ concurrency: 1, interval: MESSAGE_INTERVAL, intervalCap: 1 })
 	constructor(internal: unknown) {
 		super(internal)
@@ -47,6 +49,8 @@ export class AvHsw10 extends InstanceBase<ModuleConfig> {
 	// When module gets deleted
 	async destroy(): Promise<void> {
 		this.log('debug', `destroy ${this.id}:${this.label}`)
+		if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
+		if (this.keepAliveTimer) clearTimeout(this.keepAliveTimer)
 		this.queue.clear()
 		if (this.socket) this.socket.destroy()
 		if (this.udpListener) this.udpListener.destroy()
@@ -80,15 +84,20 @@ export class AvHsw10 extends InstanceBase<ModuleConfig> {
 	}
 
 	private initTcp(host: string, port: number) {
+		if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
 		if (this.socket) this.socket.destroy()
 		const errorEvent = (err: Error) => {
 			this.log('error', JSON.stringify(err))
+			this.reconnectTimer = setTimeout(() => {
+				this.initTcp(host, port)
+			}, RECONNECT_INTERVAL)
 		}
 		const endEvent = () => {
 			this.log('warn', `Disconnected from ${host}`)
 		}
 		const connectEvent = () => {
 			this.updateStatus(InstanceStatus.Ok)
+			this.startKeepAlive()
 		}
 		const dataEvent = (d: Buffer<ArrayBufferLike>) => {
 			if (this.config.verbose) this.log('debug', `Data received: ${d}`)
