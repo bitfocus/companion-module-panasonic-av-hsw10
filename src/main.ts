@@ -12,6 +12,7 @@ import { UpgradeScripts } from './upgrades.js'
 import { UpdateActions } from './actions.js'
 import { UpdateFeedbacks } from './feedbacks.js'
 import { Messages, MsgSyntax, CrosspointControlBusSelection } from './enums.js'
+import { Logger, LoggerLevel } from './logger.js'
 import { StatusManager } from './status.js'
 import PQueue from 'p-queue'
 
@@ -25,6 +26,7 @@ export class AvHsw10 extends InstanceBase<ModuleConfig> {
 	udpListener!: UDPHelper
 	keepAliveTimer!: NodeJS.Timeout
 	reconnectTimer!: NodeJS.Timeout
+	public logger: Logger = new Logger(this)
 	queue = new PQueue({ concurrency: 1, interval: MESSAGE_INTERVAL, intervalCap: 1 })
 	private statusManager = new StatusManager(this, { status: InstanceStatus.Connecting, message: 'Initialising' }, 1000)
 	constructor(internal: unknown) {
@@ -34,7 +36,7 @@ export class AvHsw10 extends InstanceBase<ModuleConfig> {
 	async init(config: ModuleConfig): Promise<void> {
 		this.config = config
 
-		this.updateStatus(InstanceStatus.Ok)
+		this.statusManager.updateStatus(InstanceStatus.Connecting)
 
 		this.updateActions() // export actions
 		this.updateFeedbacks() // export feedbacks
@@ -45,12 +47,15 @@ export class AvHsw10 extends InstanceBase<ModuleConfig> {
 	async configUpdated(config: ModuleConfig): Promise<void> {
 		this.queue.clear()
 		this.config = config
+		this.logger = new Logger(this, config.verbose ? LoggerLevel.Console : LoggerLevel.Information)
+		this.logger.debug('Config Updated')
+		this.logger.debug(config)
 		this.initTcp(config.host, config.port)
 		this.initUdp(config.host, config.portRecieve)
 	}
 	// When module gets deleted
 	async destroy(): Promise<void> {
-		this.log('debug', `destroy ${this.id}:${this.label}`)
+		this.logger.debug(`destroy ${this.id}:${this.label}`)
 		if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
 		if (this.keepAliveTimer) clearTimeout(this.keepAliveTimer)
 		this.queue.clear()
@@ -75,13 +80,15 @@ export class AvHsw10 extends InstanceBase<ModuleConfig> {
 				}
 				msg += MsgSyntax.Etx
 				const sent = await this.socket.send(msg)
-				if ((this.config.verbose && sent) || !sent) {
-					this.log(sent ? 'debug' : 'warn', sent ? `Message sent: ${msg}` : `Message send failed: ${msg}`)
+				if (sent) {
+					this.logger.debug(`Message sent: ${msg}`)
+				} else {
+					this.logger.warn(`Message send failed: ${msg}`)
 				}
 				this.startKeepAlive()
 				return sent
 			}
-			this.log('warn', `Not connected! Could not send ${command}: ${params}`)
+			this.logger.warn(`Not connected! Could not send ${command}: ${params}`)
 			return false
 		}) as Promise<boolean>
 	}
@@ -90,27 +97,30 @@ export class AvHsw10 extends InstanceBase<ModuleConfig> {
 		if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
 		if (this.socket) this.socket.destroy()
 		const errorEvent = (err: Error) => {
-			this.log('error', JSON.stringify(err))
+			this.logger.error(err)
 			this.reconnectTimer = setTimeout(() => {
 				this.initTcp(host, port)
 			}, RECONNECT_INTERVAL)
 		}
 		const endEvent = () => {
-			this.log('warn', `Disconnected from ${host}`)
+			this.logger.warn(`Disconnected from ${host}`)
+			this.reconnectTimer = setTimeout(() => {
+				this.initTcp(host, port)
+			}, RECONNECT_INTERVAL)
 		}
 		const connectEvent = () => {
 			this.statusManager.updateStatus(InstanceStatus.Ok)
 			this.startKeepAlive()
 		}
 		const dataEvent = (d: Buffer<ArrayBufferLike>) => {
-			if (this.config.verbose) this.log('debug', `Data received: ${d}`)
+			if (this.config.verbose) this.logger.debug(`Data received: ${d}`)
 		}
 		const statusChangeEvent = (status: InstanceStatus, message: string | undefined) => {
 			this.statusManager.updateStatus(status, message ?? '')
 		}
 		if (host.trim() == '') {
 			this.statusManager.updateStatus(InstanceStatus.BadConfig, `No host`)
-			this.log('error', `No host defined`)
+			this.logger.error(`No host defined`)
 			return
 		}
 		this.statusManager.updateStatus(InstanceStatus.Connecting, `Connecting to ${host.trim()}:${port}`)
@@ -127,20 +137,20 @@ export class AvHsw10 extends InstanceBase<ModuleConfig> {
 			if (this.udpListener) this.udpListener.destroy()
 			this.udpListener = new UDPHelper(host, port, { bind_port: port })
 			this.udpListener.on('data', (msg, _rInfo) => {
-				console.log(`UDP Message recieved: ${msg.toString()}`)
+				this.logger.console(`UDP Message recieved: ${msg.toString()}`)
 			})
 			this.udpListener.on('error', (err: Error) => {
-				this.log('error', `Error from UDP Listener: ${JSON.stringify(err)}`)
+				this.logger.error(`Error from UDP Listener: ${JSON.stringify(err)}`)
 			})
 			this.udpListener.on('listening', () => {
-				this.log('debug', `Listening for UDP messages on 0.0.0.0:${port}`)
+				this.logger.debug(`Listening for UDP messages on 0.0.0.0:${port}`)
 			})
 			this.udpListener.on('status_change', (status, msg) => {
-				this.updateStatus(status, msg ?? '')
+				this.statusManager.updateStatus(status, msg ?? '')
 			})
 		} catch (e) {
 			this.statusManager.updateStatus(InstanceStatus.UnknownError)
-			this.log('error', `Error setting up UDP Listener:\n${JSON.stringify(e)}`)
+			this.logger.error(`Error setting up UDP Listener:\n${JSON.stringify(e)}`)
 		}
 	}
 
