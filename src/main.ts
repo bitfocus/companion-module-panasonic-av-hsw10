@@ -12,6 +12,7 @@ import { UpgradeScripts } from './upgrades.js'
 import { UpdateActions } from './actions.js'
 import { UpdateFeedbacks } from './feedbacks.js'
 import { Messages, MsgSyntax, CrosspointControlBusSelection } from './enums.js'
+import { StatusManager } from './status.js'
 import PQueue from 'p-queue'
 
 const MESSAGE_INTERVAL = 16
@@ -25,6 +26,7 @@ export class AvHsw10 extends InstanceBase<ModuleConfig> {
 	keepAliveTimer!: NodeJS.Timeout
 	reconnectTimer!: NodeJS.Timeout
 	queue = new PQueue({ concurrency: 1, interval: MESSAGE_INTERVAL, intervalCap: 1 })
+	private statusManager = new StatusManager(this, { status: InstanceStatus.Connecting, message: 'Initialising' }, 1000)
 	constructor(internal: unknown) {
 		super(internal)
 	}
@@ -54,6 +56,7 @@ export class AvHsw10 extends InstanceBase<ModuleConfig> {
 		this.queue.clear()
 		if (this.socket) this.socket.destroy()
 		if (this.udpListener) this.udpListener.destroy()
+		this.statusManager.destroy()
 	}
 
 	private startKeepAlive(timeout: number = CONNECTION_TIMEOUT): void {
@@ -96,21 +99,21 @@ export class AvHsw10 extends InstanceBase<ModuleConfig> {
 			this.log('warn', `Disconnected from ${host}`)
 		}
 		const connectEvent = () => {
-			this.updateStatus(InstanceStatus.Ok)
+			this.statusManager.updateStatus(InstanceStatus.Ok)
 			this.startKeepAlive()
 		}
 		const dataEvent = (d: Buffer<ArrayBufferLike>) => {
 			if (this.config.verbose) this.log('debug', `Data received: ${d}`)
 		}
 		const statusChangeEvent = (status: InstanceStatus, message: string | undefined) => {
-			this.updateStatus(status, message ?? '')
+			this.statusManager.updateStatus(status, message ?? '')
 		}
 		if (host.trim() == '') {
-			this.updateStatus(InstanceStatus.BadConfig, `No host`)
+			this.statusManager.updateStatus(InstanceStatus.BadConfig, `No host`)
 			this.log('error', `No host defined`)
 			return
 		}
-		this.updateStatus(InstanceStatus.Connecting, `Connecting to ${host.trim()}:${port}`)
+		this.statusManager.updateStatus(InstanceStatus.Connecting, `Connecting to ${host.trim()}:${port}`)
 		this.socket = new TCPHelper(host.trim(), port)
 		this.socket.on('error', errorEvent)
 		this.socket.on('end', endEvent)
@@ -136,7 +139,7 @@ export class AvHsw10 extends InstanceBase<ModuleConfig> {
 				this.updateStatus(status, msg ?? '')
 			})
 		} catch (e) {
-			this.updateStatus(InstanceStatus.UnknownError)
+			this.statusManager.updateStatus(InstanceStatus.UnknownError)
 			this.log('error', `Error setting up UDP Listener:\n${JSON.stringify(e)}`)
 		}
 	}
