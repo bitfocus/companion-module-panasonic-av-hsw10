@@ -136,8 +136,8 @@ export class AvHsw10 extends InstanceBase<ModuleConfig> {
 		try {
 			if (this.udpListener) this.udpListener.destroy()
 			this.udpListener = new UDPHelper(host, port, { bind_port: port })
-			this.udpListener.on('data', (msg, _rInfo) => {
-				this.logger.console(`UDP Message recieved: ${msg.toString()}`)
+			this.udpListener.on('data', (msg, rInfo) => {
+				this.logger.console(`UDP Message recieved: ${msg.toString()}\n From: ${JSON.stringify(rInfo)}`)
 			})
 			this.udpListener.on('error', (err: Error) => {
 				this.logger.error(`Error from UDP Listener: ${JSON.stringify(err)}`)
