@@ -95,8 +95,6 @@ export class AvHsw10 extends InstanceBase<ModuleConfig> {
 	}
 
 	private initTcp(host: string, port: number) {
-		if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
-		if (this.socket) this.socket.destroy()
 		const errorEvent = (err: Error) => {
 			this.logger.error(err)
 			this.reconnectTimer = setTimeout(() => {
@@ -119,18 +117,25 @@ export class AvHsw10 extends InstanceBase<ModuleConfig> {
 		const statusChangeEvent = (status: InstanceStatus, message: string | undefined) => {
 			this.statusManager.updateStatus(status, message ?? '')
 		}
+		if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
 		if (host.trim() == '') {
 			this.statusManager.updateStatus(InstanceStatus.BadConfig, `No host`)
 			this.logger.error(`No host defined`)
 			return
 		}
-		this.statusManager.updateStatus(InstanceStatus.Connecting, `Connecting to ${host.trim()}:${port}`)
-		this.socket = new TCPHelper(host.trim(), port)
-		this.socket.on('error', errorEvent)
-		this.socket.on('end', endEvent)
-		this.socket.on('connect', connectEvent)
-		this.socket.on('data', dataEvent)
-		this.socket.on('status_change', statusChangeEvent)
+		try {
+			if (this.socket) this.socket.destroy()
+			this.statusManager.updateStatus(InstanceStatus.Connecting, `Connecting to ${host.trim()}:${port}`)
+			this.socket = new TCPHelper(host.trim(), port)
+			this.socket.on('error', errorEvent)
+			this.socket.on('end', endEvent)
+			this.socket.on('connect', connectEvent)
+			this.socket.on('data', dataEvent)
+			this.socket.on('status_change', statusChangeEvent)
+		} catch (e) {
+			this.statusManager.updateStatus(InstanceStatus.UnknownError)
+			this.logger.error(`Error setting TCP Socket:\n${JSON.stringify(e)}`)
+		}
 	}
 
 	private initUdp(host: string, port: number): void {
