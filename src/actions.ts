@@ -3,6 +3,7 @@ import { CompanionActionDefinition } from '@companion-module/base'
 
 import { actionOptions } from './options.js'
 import { Messages } from './enums.js'
+import { isAnyNans, rangeLimitedNumber } from './utils.js'
 
 export enum ActionId {
 	SetBusSource = 'SetBusSource',
@@ -91,10 +92,10 @@ export function UpdateActions(self: AvHsw10): void {
 				self.logger.debug(action)
 				const source = (await context.parseVariablesInString(action.options.source?.toString() ?? '')).trim()
 				let time = Number.parseInt(await context.parseVariablesInString(action.options.time?.toString() ?? ''))
-				if (Number.isNaN(time)) {
+				if (isAnyNans(time)) {
 					self.log('warn', `Transition time must be a number`)
 				}
-				time = time > 999 ? 999 : time < 0 ? 0 : time
+				time = rangeLimitedNumber(time, 0, 999, true)
 				await self.sendMessage(Messages.AutoTransitionTimeSet, source, time.toString())
 			},
 		},
@@ -106,10 +107,10 @@ export function UpdateActions(self: AvHsw10): void {
 				const bus = (await context.parseVariablesInString(action.options.bus?.toString() ?? '')).trim()
 				const enable = (await context.parseVariablesInString(action.options.enable?.toString() ?? '')).trim()
 				let time = Number.parseInt(await context.parseVariablesInString(action.options.time?.toString() ?? ''))
-				if (Number.isNaN(time)) {
+				if (isAnyNans(time)) {
 					self.log('warn', `Transition time must be a number`)
 				}
-				time = time > 999 ? 999 : time < 0 ? 0 : time
+				time = rangeLimitedNumber(time, 0, 999, true)
 				await self.sendMessage(Messages.BusTransitionStatusSet, bus, enable, time.toString())
 			},
 		},
@@ -134,27 +135,27 @@ export function UpdateActions(self: AvHsw10): void {
 				let size = Number.parseFloat(await context.parseVariablesInString(action.options.size?.toString() ?? ''))
 				const width = (await context.parseVariablesInString(action.options.width?.toString() ?? '')).trim()
 				const color = (await context.parseVariablesInString(action.options.color?.toString() ?? '')).trim()
-				if (isNaN(xPos) || isNaN(yPos) || isNaN(size)) {
+				if (isAnyNans(xPos, yPos, size)) {
 					self.logger.warn(
 						`Picture in Picture supplied invalid position/size arguments - must be numbers ${action.options.xPos}, ${action.options.yPos}, ${action.options.size}`,
 					)
 					return
 				}
-				xPos = xPos > 100 ? 100 : xPos < -100 ? -100 : xPos
-				yPos = yPos > 100 ? 100 : xPos < -100 ? -100 : yPos
-				size = size > 100 ? 100 : size < 0 ? 0 : size
-				let xPosStr = Math.floor(xPos * 100)
+				xPos = rangeLimitedNumber(xPos, -100, 100)
+				yPos = rangeLimitedNumber(yPos, -100, 100)
+				size = rangeLimitedNumber(size, 0, 100)
+				const xPosStr = Math.floor(xPos * 100)
 					.toString()
 					.substring(0, 6)
-				let yPosStr = Math.floor(yPos * 100)
+					.padStart(6, '0')
+				const yPosStr = Math.floor(yPos * 100)
 					.toString()
 					.substring(0, 6)
-				let sizeStr = Math.floor(size * 100)
+					.padStart(6, '0')
+				const sizeStr = Math.floor(size * 100)
 					.toString()
 					.substring(0, 5)
-				while (xPosStr.length < 6) xPosStr = '0' + xPosStr
-				while (yPosStr.length < 6) yPosStr = '0' + yPosStr
-				while (sizeStr.length < 5) sizeStr = '0' + sizeStr
+					.padStart(5, '0')
 				await self.sendMessage(Messages.PinPSet, target, xPosStr, yPosStr, sizeStr, width, color)
 			},
 		},
