@@ -146,7 +146,7 @@ export class AvHsw10 extends InstanceBase<ModuleConfig> {
 			this.logger.debug(`Listening for UDP messages from ${host} on 0.0.0.0:${port}`)
 		}
 		const dataEvent = (msg: Buffer<ArrayBufferLike>, rInfo: RemoteInfo) => {
-			if (rInfo.address == host) {
+			if (rInfo.address == host.trim()) {
 				this.logger.info(`UDP Message from host recieved: ${msg.toString()}`)
 			} else {
 				this.logger.console(`UDP Message recieved: ${msg.toString()}\n From: ${JSON.stringify(rInfo)}`)
@@ -155,10 +155,15 @@ export class AvHsw10 extends InstanceBase<ModuleConfig> {
 		const closeEvent = () => {
 			this.logger.info(`Closed shared udp socket on port ${port}`)
 		}
+		if (host.trim() == '') {
+			this.statusManager.updateStatus(InstanceStatus.BadConfig, `No host`)
+			this.logger.error(`No host defined`)
+			return
+		}
 		try {
 			if (this.udpListener) this.udpListener.close()
 			this.udpListener = this.createSharedUdpSocket('udp4', dataEvent)
-			this.udpListener.bind(port, host, listeningEvent)
+			this.udpListener.bind(port, host.trim(), listeningEvent)
 			this.udpListener.on('error', errorEvent)
 			this.udpListener.on('close', closeEvent)
 		} catch (e) {
