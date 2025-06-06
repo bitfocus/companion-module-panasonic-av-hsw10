@@ -26,6 +26,8 @@ export const actionOptions = {
 				id: 'bus',
 				label: 'Bus',
 				choices: [
+					{ id: CrosspointControlBusSelection.PGM, label: 'PGM' },
+					{ id: CrosspointControlBusSelection.PVW, label: 'PVW' },
 					{ id: CrosspointControlBusSelection.AUX1, label: 'AUX 1' },
 					{ id: CrosspointControlBusSelection.AUX2, label: 'AUX 2' },
 					{ id: CrosspointControlBusSelection.KEY1_F, label: 'KEY 1 F' },
