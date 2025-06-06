@@ -1,5 +1,5 @@
 {
-	"name": "panasonic-av-hs10",
+	"name": "panasonic-av-hsw10",
 	"version": "0.1.0",
 	"main": "dist/main.js",
 	"type": "module",
