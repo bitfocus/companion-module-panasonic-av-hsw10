@@ -3,8 +3,8 @@ import {
 	runEntrypoint,
 	InstanceStatus,
 	SomeCompanionConfigField,
+	SharedUdpSocket,
 	TCPHelper,
-	UDPHelper,
 } from '@companion-module/base'
 import { GetConfigFields, type ModuleConfig } from './config.js'
 import { UpdateVariableDefinitions } from './variables.js'
@@ -15,6 +15,7 @@ import { Messages, MsgSyntax, CrosspointControlBusSelection } from './enums.js'
 import { Logger, LoggerLevel } from './logger.js'
 import { StatusManager } from './status.js'
 import PQueue from 'p-queue'
+import { RemoteInfo } from 'dgram'
 
 const MESSAGE_INTERVAL = 16
 const CONNECTION_TIMEOUT = 20000
@@ -22,8 +23,8 @@ const RECONNECT_INTERVAL = 10000
 
 export class AvHsw10 extends InstanceBase<ModuleConfig> {
 	config!: ModuleConfig // Setup in init()
-	socket!: TCPHelper
-	udpListener!: UDPHelper
+	private socket!: TCPHelper
+	private udpListener!: SharedUdpSocket
 	keepAliveTimer!: NodeJS.Timeout
 	reconnectTimer!: NodeJS.Timeout
 	public logger: Logger = new Logger(this)
@@ -60,7 +61,7 @@ export class AvHsw10 extends InstanceBase<ModuleConfig> {
 		if (this.keepAliveTimer) clearTimeout(this.keepAliveTimer)
 		this.queue.clear()
 		if (this.socket) this.socket.destroy()
-		if (this.udpListener) this.udpListener.destroy()
+		if (this.udpListener) this.udpListener.close()
 		this.statusManager.destroy()
 	}
 
@@ -133,21 +134,25 @@ export class AvHsw10 extends InstanceBase<ModuleConfig> {
 	}
 
 	private initUdp(host: string, port: number): void {
+		const errorEvent = (err: Error) => {
+			this.logger.error(`Error from UDP Listener: ${JSON.stringify(err)}`)
+		}
+		const listeningEvent = () => {
+			this.logger.debug(`Listening for UDP messages on 0.0.0.0:${port}`)
+		}
+		const dataEvent = (msg: Buffer<ArrayBufferLike>, rInfo: RemoteInfo) => {
+			this.logger.console(`UDP Message recieved: ${msg.toString()}\n From: ${JSON.stringify(rInfo)}`)
+		}
+		const closeEvent = () => {
+			this.logger.info(`Closed shared udp socket on port ${port}`)
+		}
 		try {
-			if (this.udpListener) this.udpListener.destroy()
-			this.udpListener = new UDPHelper(host, port, { bind_port: port })
-			this.udpListener.on('data', (msg, rInfo) => {
-				this.logger.console(`UDP Message recieved: ${msg.toString()}\n From: ${JSON.stringify(rInfo)}`)
-			})
-			this.udpListener.on('error', (err: Error) => {
-				this.logger.error(`Error from UDP Listener: ${JSON.stringify(err)}`)
-			})
-			this.udpListener.on('listening', () => {
-				this.logger.debug(`Listening for UDP messages on 0.0.0.0:${port}`)
-			})
-			this.udpListener.on('status_change', (status, msg) => {
-				this.statusManager.updateStatus(status, msg ?? '')
-			})
+			if (this.udpListener) this.udpListener.close()
+			this.udpListener = this.createSharedUdpSocket('udp4', dataEvent)
+			this.udpListener.bind(port, host, listeningEvent)
+			this.udpListener.on('error', errorEvent)
+			this.udpListener.on('listening', listeningEvent)
+			this.udpListener.on('close', closeEvent)
 		} catch (e) {
 			this.statusManager.updateStatus(InstanceStatus.UnknownError)
 			this.logger.error(`Error setting up UDP Listener:\n${JSON.stringify(e)}`)
