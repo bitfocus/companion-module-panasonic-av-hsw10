@@ -5,8 +5,8 @@
 	"description": "Bitfocus Companion module for the Panasonic AV-HSW10",
 	"version": "0.0.0",
 	"license": "MIT",
-	"repository": "git+https://github.com/bitfocus/companion-module-your-module-name.git",
-	"bugs": "https://github.com/bitfocus/companion-module-your-module-name/issues",
+	"repository": "git+https://github.com/phillipivan/companion-module-panasonic-av-hsw10.git",
+	"bugs": "https://github.com/phillipivan/companion-module-panasonic-av-hsw10/issues",
 	"maintainers": [
 		{
 			"name": "Phillip Ivan Pietruschka",
