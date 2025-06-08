@@ -11,8 +11,9 @@ import { UpdateVariableDefinitions } from './variables.js'
 import { UpgradeScripts } from './upgrades.js'
 import { UpdateActions } from './actions.js'
 import { UpdateFeedbacks } from './feedbacks.js'
-import { Messages, MsgSyntax, CrosspointControlBusSelection } from './enums.js'
+import { STX, ETX, Messages, MsgSyntax, CrosspointControlBusSelection } from './enums.js'
 import { Logger, LoggerLevel } from './logger.js'
+import { parseTcpMsg } from './parseMsg.js'
 import { StatusManager } from './status.js'
 import PQueue from 'p-queue'
 import { RemoteInfo } from 'dgram'
@@ -24,11 +25,12 @@ const RECONNECT_INTERVAL = 10000
 export class AvHsw10 extends InstanceBase<ModuleConfig> {
 	config!: ModuleConfig // Setup in init()
 	private socket!: TCPHelper
+	private tcpBuffer = Buffer.from('')
 	private udpListener!: SharedUdpSocket
-	keepAliveTimer!: NodeJS.Timeout
-	reconnectTimer!: NodeJS.Timeout
+	private keepAliveTimer!: NodeJS.Timeout
+	private reconnectTimer!: NodeJS.Timeout
 	public logger: Logger = new Logger(this)
-	queue = new PQueue({ concurrency: 1, interval: MESSAGE_INTERVAL, intervalCap: 1 })
+	private queue = new PQueue({ concurrency: 1, interval: MESSAGE_INTERVAL, intervalCap: 1 })
 	private statusManager = new StatusManager(this, { status: InstanceStatus.Connecting, message: 'Initialising' }, 1000)
 	constructor(internal: unknown) {
 		super(internal)
@@ -49,8 +51,7 @@ export class AvHsw10 extends InstanceBase<ModuleConfig> {
 		this.queue.clear()
 		this.config = config
 		this.logger = new Logger(this, config.verbose ? LoggerLevel.Console : LoggerLevel.Information)
-		this.logger.debug('Config Updated')
-		this.logger.debug(config)
+		this.logger.debug(`Config Updated: ${JSON.stringify(config)}`)
 		this.initTcp(config.host, config.port)
 		this.initUdp(config.host, config.portRecieve)
 	}
@@ -112,7 +113,15 @@ export class AvHsw10 extends InstanceBase<ModuleConfig> {
 			this.startKeepAlive()
 		}
 		const dataEvent = (d: Buffer<ArrayBufferLike>) => {
-			if (this.config.verbose) this.logger.debug(`Data received: ${d}`)
+			if (this.config.verbose) this.logger.console(`Data received: ${d}`)
+			this.tcpBuffer = Buffer.concat([this.tcpBuffer, d])
+			let i = 0
+			let offset = 0
+			while ((i = this.tcpBuffer.indexOf(ETX, offset)) !== -1) {
+				parseTcpMsg(this.tcpBuffer.subarray(this.tcpBuffer.indexOf(STX, offset), i).toString(), this)
+				offset = i + 1
+			}
+			this.tcpBuffer = this.tcpBuffer.subarray(offset)
 		}
 		const statusChangeEvent = (status: InstanceStatus, message: string | undefined) => {
 			this.statusManager.updateStatus(status, message ?? '')
