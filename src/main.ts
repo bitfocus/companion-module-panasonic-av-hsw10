@@ -13,7 +13,7 @@ import { UpdateActions } from './actions.js'
 import { UpdateFeedbacks } from './feedbacks.js'
 import { STX, ETX, Messages, MsgSyntax, CrosspointControlBusSelection } from './enums.js'
 import { Logger, LoggerLevel } from './logger.js'
-import { parseTcpMsg } from './parseMsg.js'
+import { parseTcpMsg, parseUdpMsg } from './parseMsg.js'
 import { StatusManager } from './status.js'
 import PQueue from 'p-queue'
 import { RemoteInfo } from 'dgram'
@@ -113,7 +113,7 @@ export class AvHsw10 extends InstanceBase<ModuleConfig> {
 			this.startKeepAlive()
 		}
 		const dataEvent = (d: Buffer<ArrayBufferLike>) => {
-			if (this.config.verbose) this.logger.console(`Data received: ${d}`)
+			this.logger.console(`Data received: ${d}`)
 			this.tcpBuffer = Buffer.concat([this.tcpBuffer, d])
 			let i = 0
 			let offset = 0
@@ -156,9 +156,11 @@ export class AvHsw10 extends InstanceBase<ModuleConfig> {
 		}
 		const dataEvent = (msg: Buffer<ArrayBufferLike>, rInfo: RemoteInfo) => {
 			if (rInfo.address == host.trim()) {
-				this.logger.info(`UDP Message from host recieved: ${msg.toString()}`)
+				parseUdpMsg(msg, this)
 			} else {
-				this.logger.console(`UDP Message recieved: ${msg.toString()}\n From: ${JSON.stringify(rInfo)}`)
+				this.logger.console(
+					`UDP Message recieved: ${msg.toString()}\n From unrecognised host: ${JSON.stringify(rInfo)}`,
+				)
 			}
 		}
 		const closeEvent = () => {
