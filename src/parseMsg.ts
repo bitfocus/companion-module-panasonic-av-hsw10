@@ -67,7 +67,7 @@ export const parseUdpMsg = (msg: Buffer, self: AvHsw10): void => {
 	self.logger.debug(`Parsing UDP message: ${msg}`)
 	const PBC = msg.readUInt16LE(0)
 	if (msg.length !== PBC + 2 || PBC > 2046) {
-		self.logger.warn(`UDP message expected length. Expedted ${PBC + 2}, Recieved: ${msg.length}`)
+		self.logger.warn(`UDP message expected length. Expected ${PBC + 2}, Recieved: ${msg.length}`)
 		return
 	}
 	const VER = msg.readUint8(2)
