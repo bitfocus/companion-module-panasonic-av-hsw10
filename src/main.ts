@@ -34,6 +34,7 @@ export class AvHsw10 extends InstanceBase<ModuleConfig> {
 	private statusManager = new StatusManager(this, { status: InstanceStatus.Connecting, message: 'Initialising' }, 1000)
 	constructor(internal: unknown) {
 		super(internal)
+		process.title = `companion_AvHSw10_${this.label}`
 	}
 
 	async init(config: ModuleConfig): Promise<void> {
@@ -50,6 +51,7 @@ export class AvHsw10 extends InstanceBase<ModuleConfig> {
 	async configUpdated(config: ModuleConfig): Promise<void> {
 		this.queue.clear()
 		this.config = config
+		process.title = `companion_AvHSw10_${this.label}`
 		this.logger = new Logger(this, config.verbose ? LoggerLevel.Console : LoggerLevel.Information)
 		this.logger.debug(`Config Updated: ${JSON.stringify(config)}`)
 		this.initTcp(config.host, config.port)
