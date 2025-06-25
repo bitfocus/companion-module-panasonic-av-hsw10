@@ -35,7 +35,7 @@ export function GetConfigFields(): SomeCompanionConfigField[] {
 			max: 65535,
 			default: 65000,
 			tooltip:
-				'Companion will bind to this port on 0.0.0.0. Each module instance must have a unique port. This must match the Destination Port in the device configuration',
+				'Companion will bind to this port on 0.0.0.0. This must match the Destination Port in the device configuration',
 		},
 		{
 			type: 'checkbox',
