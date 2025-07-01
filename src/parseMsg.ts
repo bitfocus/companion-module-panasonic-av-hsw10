@@ -11,7 +11,7 @@ export interface DisplayMessageData {
 
 export const parseTcpMsg = (msg: string, self: AvHsw10): void => {
 	msg = msg.replaceAll(MsgSyntax.Stx, '').replaceAll(MsgSyntax.Etx, '')
-	const data = msg.split(MsgSyntax.Sep)
+	const data = msg.split(MsgSyntax.Sep).map((element) => element.trim())
 	try {
 		switch (data[0]) {
 			case 'ATIM':
