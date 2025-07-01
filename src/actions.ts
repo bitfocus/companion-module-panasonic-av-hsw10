@@ -46,7 +46,7 @@ export function UpdateActions(self: AvHsw10): void {
 		},
 		[ActionId.SetSourceName]: {
 			name: 'Source Name',
-			options: actionOptions.setSourceNameDisplay(),
+			options: actionOptions.setSourceName(),
 			callback: async (action, context) => {
 				self.logger.debug(action)
 				const source = (await context.parseVariablesInString(action.options.source?.toString() ?? '')).trim()
