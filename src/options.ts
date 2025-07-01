@@ -366,7 +366,7 @@ export const actionOptions = {
 				label: 'Target',
 				choices: [
 					{ id: PinPStatusQueryTarget.PinPKEY1, label: 'KEY 1' },
-					{ id: PinPStatusQueryTarget.PinPKEY1, label: 'KEY 2' },
+					{ id: PinPStatusQueryTarget.PinPKEY2, label: 'KEY 2' },
 				],
 				default: PinPStatusQueryTarget.PinPKEY1,
 				allowCustom: false,
