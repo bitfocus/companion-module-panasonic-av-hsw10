@@ -144,14 +144,22 @@ export function UpdateActions(self: AvHsw10): void {
 				xPos = rangeLimitedNumber(xPos, -100, 100)
 				yPos = rangeLimitedNumber(yPos, -100, 100)
 				size = rangeLimitedNumber(size, 0, 100)
-				const xPosStr = Math.floor(xPos * 100)
+				const xNeg: boolean = xPos < 0
+				const yNeg: boolean = yPos < 0
+				let xPosStr = Math.floor(Math.abs(xPos * 100))
 					.toString()
 					.substring(0, 6)
 					.padStart(6, '0')
-				const yPosStr = Math.floor(yPos * 100)
+				if (xNeg) {
+					xPosStr = ('-' + xPosStr).substring(0, 6)
+				}
+				let yPosStr = Math.floor(Math.abs(yPos * 100))
 					.toString()
 					.substring(0, 6)
 					.padStart(6, '0')
+				if (yNeg) {
+					yPosStr = ('-' + yPosStr).substring(0, 6)
+				}
 				const sizeStr = Math.floor(size * 100)
 					.toString()
 					.substring(0, 5)
