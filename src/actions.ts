@@ -30,7 +30,7 @@ export function UpdateActions(self: AvHsw10): void {
 			},
 			subscribe: async (action, context) => {
 				const bus = (await context.parseVariablesInString(action.options.bus?.toString() ?? '')).trim()
-				await self.sendMessage(Messages.BusCrosspointQuery, bus)
+				await self.sendMessage(Messages.BusStatusQuery, bus)
 			},
 		},
 		[ActionId.SetSourceNameDisplay]: {
