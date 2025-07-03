@@ -75,12 +75,12 @@ export class AvHsw10 extends InstanceBase<ModuleConfig> {
 		}, timeout / 2)
 	}
 
-	public async sendMessage(command: Messages, ...params: string[]): Promise<boolean> {
+	public async sendMessage(command: Messages, ...args: string[]): Promise<boolean> {
 		return this.queue.add(async () => {
 			if (this.socket && this.socket.isConnected) {
 				let msg = MsgSyntax.Stx + command
-				for (let i = 0; i < params.length; i++) {
-					msg += MsgSyntax.Sep + params[i]
+				for (const arg of args) {
+					msg += MsgSyntax.Sep + arg
 				}
 				msg += MsgSyntax.Etx
 				const sent = await this.socket.send(msg)
@@ -92,7 +92,7 @@ export class AvHsw10 extends InstanceBase<ModuleConfig> {
 				this.startKeepAlive()
 				return sent
 			}
-			this.logger.warn(`Not connected! Could not send ${command}: ${params}`)
+			this.logger.warn(`Not connected! Could not send ${command}: ${args}`)
 			return false
 		}) as Promise<boolean>
 	}

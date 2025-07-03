@@ -133,8 +133,8 @@ export function UpdateActions(self: AvHsw10): void {
 				let xPos = Number.parseFloat(await context.parseVariablesInString(action.options.xPos?.toString() ?? ''))
 				let yPos = Number.parseFloat(await context.parseVariablesInString(action.options.yPos?.toString() ?? ''))
 				let size = Number.parseFloat(await context.parseVariablesInString(action.options.size?.toString() ?? ''))
-				const width = (await context.parseVariablesInString(action.options.width?.toString() ?? '')).trim()
-				const colour = (await context.parseVariablesInString(action.options.colour?.toString() ?? '')).trim()
+				const width = (await context.parseVariablesInString(action.options.width?.toString() ?? '4')).trim()
+				const colour = (await context.parseVariablesInString(action.options.colour?.toString() ?? '4')).trim()
 				if (isAnyNans(xPos, yPos, size)) {
 					self.logger.warn(
 						`Picture in Picture supplied invalid position/size arguments - must be numbers ${action.options.xPos}, ${action.options.yPos}, ${action.options.size}`,
@@ -164,6 +164,9 @@ export function UpdateActions(self: AvHsw10): void {
 					.toString()
 					.substring(0, 5)
 					.padStart(5, '0')
+				self.logger.console(
+					`Set PinP Action. Target: ${target}, xPos: ${xPosStr}, yPos: ${yPosStr}, size: ${sizeStr}, width: ${width}, colour: ${colour}`,
+				)
 				await self.sendMessage(Messages.PinPSet, target, xPosStr, yPosStr, sizeStr, width, colour)
 			},
 		},
