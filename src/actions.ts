@@ -134,7 +134,7 @@ export function UpdateActions(self: AvHsw10): void {
 				let yPos = Number.parseFloat(await context.parseVariablesInString(action.options.yPos?.toString() ?? ''))
 				let size = Number.parseFloat(await context.parseVariablesInString(action.options.size?.toString() ?? ''))
 				const width = (await context.parseVariablesInString(action.options.width?.toString() ?? '')).trim()
-				const color = (await context.parseVariablesInString(action.options.color?.toString() ?? '')).trim()
+				const colour = (await context.parseVariablesInString(action.options.colour?.toString() ?? '')).trim()
 				if (isAnyNans(xPos, yPos, size)) {
 					self.logger.warn(
 						`Picture in Picture supplied invalid position/size arguments - must be numbers ${action.options.xPos}, ${action.options.yPos}, ${action.options.size}`,
@@ -151,20 +151,20 @@ export function UpdateActions(self: AvHsw10): void {
 					.substring(0, 6)
 					.padStart(6, '0')
 				if (xNeg) {
-					xPosStr = ('-' + xPosStr).substring(0, 6)
+					xPosStr = '-' + xPosStr
 				}
 				let yPosStr = Math.floor(Math.abs(yPos * 100))
 					.toString()
 					.substring(0, 6)
 					.padStart(6, '0')
 				if (yNeg) {
-					yPosStr = ('-' + yPosStr).substring(0, 6)
+					yPosStr = '-' + yPosStr
 				}
 				const sizeStr = Math.floor(size * 100)
 					.toString()
 					.substring(0, 5)
 					.padStart(5, '0')
-				await self.sendMessage(Messages.PinPSet, target, xPosStr, yPosStr, sizeStr, width, color)
+				await self.sendMessage(Messages.PinPSet, target, xPosStr, yPosStr, sizeStr, width, colour)
 			},
 		},
 	}
