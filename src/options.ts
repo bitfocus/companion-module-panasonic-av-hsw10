@@ -52,7 +52,7 @@ export const actionOptions = {
 					{ id: CrosspointControlBusSelection.MV_16, label: 'MV 16' },
 				],
 				default: CrosspointControlBusSelection.PGM,
-				allowCustom: false,
+				allowCustom: true,
 			},
 			{
 				type: 'dropdown',
@@ -89,7 +89,7 @@ export const actionOptions = {
 					{ id: CrosspointControlSourceSelection.CLOCK, label: 'CLOCK' },
 				],
 				default: CrosspointControlSourceSelection.IN1,
-				allowCustom: false,
+				allowCustom: true,
 			},
 		]
 	},
@@ -461,7 +461,7 @@ export const feedbackOptions = {
 					{ id: CrosspointControlBusSelection.MV_16, label: 'MV 16' },
 				],
 				default: CrosspointControlBusSelection.PGM,
-				allowCustom: false,
+				allowCustom: true,
 			},
 			{
 				type: 'dropdown',
@@ -498,7 +498,7 @@ export const feedbackOptions = {
 					{ id: CrosspointControlSourceSelection.CLOCK, label: 'CLOCK' },
 				],
 				default: CrosspointControlSourceSelection.IN1,
-				allowCustom: false,
+				allowCustom: true,
 			},
 		]
 	},
