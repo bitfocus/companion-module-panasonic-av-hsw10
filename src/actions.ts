@@ -4,6 +4,7 @@ import { CompanionActionDefinition } from '@companion-module/base'
 import { actionOptions } from './options.js'
 import { Messages } from './enums.js'
 import { isAnyNans, rangeLimitedNumber } from './utils.js'
+import { isBusType, isSourceType } from './switcher.js'
 
 export enum ActionId {
 	SetBusSource = 'SetBusSource',
@@ -26,11 +27,26 @@ export function UpdateActions(self: AvHsw10): void {
 			callback: async (action, context) => {
 				const bus = (await context.parseVariablesInString(action.options.bus?.toString() ?? '')).trim()
 				const src = (await context.parseVariablesInString(action.options.source?.toString() ?? '')).trim()
-				await self.sendMessage(Messages.BusSettingControl, bus, src)
+				if (isBusType(bus) && isSourceType(src)) {
+					await self.sendMessage(Messages.BusSettingControl, bus, src)
+				} else {
+					self.logger.warn(`Can not complete SetBusSource, invalid options. Bus ${bus}, Source: ${src}`)
+				}
 			},
 			subscribe: async (action, context) => {
 				const bus = (await context.parseVariablesInString(action.options.bus?.toString() ?? '')).trim()
-				await self.sendMessage(Messages.BusStatusQuery, bus)
+				if (isBusType(bus)) await self.sendMessage(Messages.BusStatusQuery, bus)
+			},
+			learn: async (action, context) => {
+				const bus = (await context.parseVariablesInString(action.options.bus?.toString() ?? '')).trim()
+				const source = self.state.getBusSource(bus)
+				if (source) {
+					return {
+						...action.options,
+						source: source,
+					}
+				}
+				return undefined
 			},
 		},
 		[ActionId.SetSourceNameDisplay]: {

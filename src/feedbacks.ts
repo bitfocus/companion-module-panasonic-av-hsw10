@@ -2,6 +2,7 @@ import { combineRgb, type CompanionFeedbackDefinition } from '@companion-module/
 import type { AvHsw10 } from './main.js'
 import { Messages } from './enums.js'
 import { feedbackOptions } from './options.js'
+import { isBusType } from './switcher.js'
 
 export const colours = {
 	black: combineRgb(0, 0, 0),
@@ -32,7 +33,18 @@ export function UpdateFeedbacks(self: AvHsw10): void {
 			},
 			subscribe: async (feedback, context) => {
 				const bus = (await context.parseVariablesInString(feedback.options.bus?.toString() ?? '')).trim()
-				await self.sendMessage(Messages.BusStatusQuery, bus)
+				if (isBusType(bus)) await self.sendMessage(Messages.BusStatusQuery, bus)
+			},
+			learn: async (feedback, context) => {
+				const bus = (await context.parseVariablesInString(feedback.options.bus?.toString() ?? '')).trim()
+				const source = self.state.getBusSource(bus)
+				if (source) {
+					return {
+						...feedback.options,
+						source: source,
+					}
+				}
+				return undefined
 			},
 		},
 	}
