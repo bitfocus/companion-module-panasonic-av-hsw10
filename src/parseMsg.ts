@@ -1,5 +1,6 @@
 import type { AvHsw10 } from './main.js'
 import { MsgSyntax } from './enums.js'
+import { FeedbackId } from './feedbacks.js'
 
 export interface DisplayMessageData {
 	index: number
@@ -22,9 +23,17 @@ export const parseTcpMsg = (msg: string, self: AvHsw10): void => {
 				break
 			case 'ABUS':
 				self.logger.console(`Message type: BusSettingResponse`)
+				if (data.length == 3) {
+					self.state.setBusSource(data[1], data[2])
+					self.addFeedbackToCheck(FeedbackId.BusSource)
+				}
 				break
 			case 'ABSC':
 				self.logger.console(`Message type: BusStatusResponse`)
+				if (data.length == 3) {
+					self.state.setBusSource(data[1], data[2])
+					self.addFeedbackToCheck(FeedbackId.BusSource)
+				}
 				break
 			case 'ABTI':
 				self.logger.console(`Message type: BusTransitionStatusResponse`)
@@ -60,6 +69,7 @@ export const parseTcpMsg = (msg: string, self: AvHsw10): void => {
 }
 
 export const parseUdpMsg = (msg: Buffer, self: AvHsw10): void => {
-	self.logger.debug(`Parsing UDP message: ${String.fromCodePoint(...msg)}`)
-	parseTcpMsg(String.fromCodePoint(...msg), self)
+	const str = String.fromCodePoint(...msg)
+	self.logger.debug(`Parsing UDP message: ${str}`)
+	parseTcpMsg(str, self)
 }

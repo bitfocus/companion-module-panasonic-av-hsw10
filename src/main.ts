@@ -10,17 +10,20 @@ import { GetConfigFields, type ModuleConfig } from './config.js'
 import { UpdateVariableDefinitions } from './variables.js'
 import { UpgradeScripts } from './upgrades.js'
 import { UpdateActions } from './actions.js'
-import { UpdateFeedbacks } from './feedbacks.js'
+import { FeedbackId, UpdateFeedbacks } from './feedbacks.js'
 import { STX, ETX, Messages, MsgSyntax, CrosspointControlBusSelection } from './enums.js'
 import { Logger, LoggerLevel } from './logger.js'
 import { parseTcpMsg, parseUdpMsg } from './parseMsg.js'
 import { StatusManager } from './status.js'
+import { SwitcherState } from './switcher.js'
 import PQueue from 'p-queue'
 import { RemoteInfo } from 'dgram'
+import { throttle } from 'lodash'
 
 const MESSAGE_INTERVAL = 16
 const CONNECTION_TIMEOUT = 20000
 const RECONNECT_INTERVAL = 10000
+const THROTTLE_DURATION = 100
 
 export class AvHsw10 extends InstanceBase<ModuleConfig> {
 	config!: ModuleConfig // Setup in init()
@@ -32,6 +35,8 @@ export class AvHsw10 extends InstanceBase<ModuleConfig> {
 	public logger: Logger = new Logger(this)
 	private queue = new PQueue({ concurrency: 1, interval: MESSAGE_INTERVAL, intervalCap: 1 })
 	private statusManager = new StatusManager(this, { status: InstanceStatus.Connecting, message: 'Initialising' }, 1000)
+	public state = new SwitcherState()
+	public feedbacksToCheck: Set<FeedbackId> = new Set<FeedbackId>()
 	constructor(internal: unknown) {
 		super(internal)
 		process.title = `companion_AvHSw10_${this.label}`
@@ -51,6 +56,7 @@ export class AvHsw10 extends InstanceBase<ModuleConfig> {
 	async configUpdated(config: ModuleConfig): Promise<void> {
 		this.queue.clear()
 		this.config = config
+		this.state.resetBusSources()
 		process.title = `companion_AvHSw10_${this.label}`
 		this.logger = new Logger(this, config.verbose ? LoggerLevel.Console : LoggerLevel.Information)
 		this.logger.debug(`Config Updated: ${JSON.stringify(config)}`)
@@ -112,7 +118,9 @@ export class AvHsw10 extends InstanceBase<ModuleConfig> {
 		}
 		const connectEvent = () => {
 			this.statusManager.updateStatus(InstanceStatus.Ok)
+			this.tcpBuffer = Buffer.from('')
 			this.startKeepAlive()
+			this.queryEachBus()
 		}
 		const dataEvent = (d: Buffer<ArrayBufferLike>) => {
 			this.logger.console(`Data received: ${d}`)
@@ -183,6 +191,26 @@ export class AvHsw10 extends InstanceBase<ModuleConfig> {
 			this.statusManager.updateStatus(InstanceStatus.UnknownError)
 			this.logger.error(`Error setting up UDP Listener:\n${JSON.stringify(e)}`)
 		}
+	}
+
+	private throttledFeedbackChecks = throttle(
+		() => {
+			this.checkFeedbacks(...this.feedbacksToCheck)
+			this.feedbacksToCheck.clear()
+		},
+		THROTTLE_DURATION,
+		{ leading: false, trailing: true },
+	)
+
+	public addFeedbackToCheck(fb: FeedbackId): void {
+		this.feedbacksToCheck.add(fb)
+		this.throttledFeedbackChecks()
+	}
+
+	private queryEachBus(): void {
+		Object.values(CrosspointControlBusSelection).forEach((bus) => {
+			this.sendMessage(Messages.BusStatusQuery, bus).catch(() => {})
+		})
 	}
 
 	// Return config fields for web config

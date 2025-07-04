@@ -1,5 +1,7 @@
-import { combineRgb, type CompanionFeedbackDefinitions } from '@companion-module/base'
+import { combineRgb, type CompanionFeedbackDefinition } from '@companion-module/base'
 import type { AvHsw10 } from './main.js'
+import { Messages } from './enums.js'
+import { feedbackOptions } from './options.js'
 
 export const colours = {
 	black: combineRgb(0, 0, 0),
@@ -8,7 +10,31 @@ export const colours = {
 	green: combineRgb(0, 204, 0),
 }
 
+export enum FeedbackId {
+	BusSource = 'BusSource',
+}
+
 export function UpdateFeedbacks(self: AvHsw10): void {
-	const feedbackDefs: CompanionFeedbackDefinitions = {}
+	const feedbackDefs: { [id in FeedbackId]: CompanionFeedbackDefinition | undefined } = {
+		[FeedbackId.BusSource]: {
+			name: 'Bus Source',
+			type: 'boolean',
+			defaultStyle: {
+				color: colours.black,
+				bgcolor: colours.red,
+			},
+			options: feedbackOptions.setBusSource(),
+			callback: async (feedback, context) => {
+				return (
+					(await context.parseVariablesInString(feedback.options.source?.toString() ?? '')) ===
+					self.state.getBusSource(await context.parseVariablesInString(feedback.options.bus?.toString() ?? ''))
+				)
+			},
+			subscribe: async (feedback, context) => {
+				const bus = (await context.parseVariablesInString(feedback.options.bus?.toString() ?? '')).trim()
+				await self.sendMessage(Messages.BusStatusQuery, bus)
+			},
+		},
+	}
 	self.setFeedbackDefinitions(feedbackDefs)
 }
