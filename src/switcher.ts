@@ -1,10 +1,12 @@
 import { CrosspointControlBusSelection, CrosspointControlSourceSelection } from './enums.js'
 
-function isBusType(test: any): test is CrosspointControlBusSelection {
+// eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
+export function isBusType(test: any): test is CrosspointControlBusSelection {
 	return Object.values(CrosspointControlBusSelection).indexOf(test) !== -1
 }
 
-function isSourceType(test: any): test is CrosspointControlSourceSelection {
+// eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
+export function isSourceType(test: any): test is CrosspointControlSourceSelection {
 	return Object.values(CrosspointControlSourceSelection).indexOf(test) !== -1
 }
 
