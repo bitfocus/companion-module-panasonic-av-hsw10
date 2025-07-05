@@ -18,10 +18,12 @@ export class SwitcherState {
 
 	constructor() {}
 
-	public setBusSource(bus: string, source: string): void {
+	public setBusSource(bus: string, source: string): boolean {
 		if (isBusType(bus) && isSourceType(source)) {
 			this.#BusSource.set(bus, source)
+			return true
 		}
+		return false
 	}
 
 	public getBusSource(bus: string): string | undefined {
