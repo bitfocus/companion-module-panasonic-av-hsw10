@@ -12,7 +12,7 @@ export interface Status {
  * Only calls update Status if status has actually changed, with a configurable debounce
  * @param self InstanceBase from which to call updateStatus
  * @param initStatus Status to be set on init
- * @param debounceTimeout Debounce interval in mS to be applied after a status update
+ * @param throttleTimeout Throttle rate in mS for status updates
  *
  */
 
@@ -20,8 +20,7 @@ export class StatusManager {
 	#currentStatus: Status = { status: InstanceStatus.Disconnected, message: '' }
 	#newStatus: Status = { status: InstanceStatus.Disconnected, message: '' }
 	#parentInstance!: InstanceBase<ModuleConfig>
-	private debounceTimer: NodeJS.Timeout | undefined
-	#throttleTimeout: number = 1000
+	#throttleTimeout: number = 2000
 	#isDestroyed: boolean = false
 
 	constructor(
@@ -62,9 +61,6 @@ export class StatusManager {
 		}
 		if (this.#currentStatus.status === newStatus && this.#currentStatus.message === newMsg) return
 		this.#newStatus = { status: newStatus, message: newMsg }
-		if (this.debounceTimer) {
-			return
-		}
 		this.setNewStatus(this.#newStatus)
 	}
 
