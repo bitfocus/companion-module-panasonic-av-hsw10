@@ -1,6 +1,6 @@
 {
 	"name": "panasonic-av-hsw10",
-	"version": "0.2.8",
+	"version": "1.0.0",
 	"main": "dist/main.js",
 	"type": "module",
 	"scripts": {
@@ -37,7 +37,7 @@
 		"prettier": "^3.6.2",
 		"rimraf": "^6.0.1",
 		"typescript": "~5.8.3",
-		"typescript-eslint": "^8.35.1"
+		"typescript-eslint": "^8.36.0"
 	},
 	"prettier": "@companion-module/tools/.prettierrc.json",
 	"lint-staged": {
