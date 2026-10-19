@@ -1,39 +1,30 @@
 import { CrosspointControlBusSelection, CrosspointControlSourceSelection } from './enums.js'
+import { isEnumValue } from './utils.js'
 
-// eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
-export function isBusType(test: any): test is CrosspointControlBusSelection {
-	return Object.values(CrosspointControlBusSelection).indexOf(test) !== -1
+export function isBusType(test: unknown): test is CrosspointControlBusSelection {
+	return isEnumValue(CrosspointControlBusSelection, test)
 }
 
-// eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
-export function isSourceType(test: any): test is CrosspointControlSourceSelection {
-	return Object.values(CrosspointControlSourceSelection).indexOf(test) !== -1
+export function isSourceType(test: unknown): test is CrosspointControlSourceSelection {
+	return isEnumValue(CrosspointControlSourceSelection, test)
 }
 
 export class SwitcherState {
-	#BusSource: Map<CrosspointControlBusSelection, CrosspointControlSourceSelection> = new Map<
-		CrosspointControlBusSelection,
-		CrosspointControlSourceSelection
-	>()
+	/** The source on each bus, as the switcher last reported it. A bus it hasn't reported is absent */
+	readonly #busSource = new Map<CrosspointControlBusSelection, CrosspointControlSourceSelection>()
 
-	constructor() {}
-
-	public setBusSource(bus: string, source: string): boolean {
-		if (isBusType(bus) && isSourceType(source)) {
-			this.#BusSource.set(bus, source)
-			return true
-		}
-		return false
+	/** @returns true if the source differs from the one the bus had */
+	public setBusSource(bus: CrosspointControlBusSelection, source: CrosspointControlSourceSelection): boolean {
+		if (this.#busSource.get(bus) === source) return false
+		this.#busSource.set(bus, source)
+		return true
 	}
 
-	public getBusSource(bus: string): string | undefined {
-		if (isBusType(bus)) {
-			return this.#BusSource.get(bus)
-		}
-		return undefined
+	public getBusSource(bus: CrosspointControlBusSelection): CrosspointControlSourceSelection | undefined {
+		return this.#busSource.get(bus)
 	}
 
 	public resetBusSources(): void {
-		this.#BusSource.clear()
+		this.#busSource.clear()
 	}
 }

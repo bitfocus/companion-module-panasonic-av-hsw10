@@ -1,9 +1,12 @@
 node_modules/
 package-lock.json
 /pkg
-/pkg.tgz
+/*.tgz
 /dist
+/coverage
 DEBUG-*
 /.yarn
 /.vscode
-panasonic-av-hsw10-*.tgz
+*.log
+*.zip
+.DS_Store

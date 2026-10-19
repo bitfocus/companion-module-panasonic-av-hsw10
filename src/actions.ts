@@ -1,11 +1,31 @@
-import type { AvHsw10 } from './main.js'
-import { CompanionActionDefinition } from '@companion-module/base'
+import type { CompanionActionDefinitions } from '@companion-module/base'
+import type AvHsw10 from './main.js'
+import { actionOptions, TRANSITION_TIME_MAX } from './options.js'
+import {
+	BusTransitionResponseEnable,
+	BusType,
+	CrosspointControlBusSelection,
+	CrosspointControlSourceSelection,
+	KeySignalCouplingStatus,
+	Messages,
+	PinPBorderColor,
+	PinPBorderWidth,
+	PinPStatusQueryTarget,
+	SettingForAuxTransitionEffect,
+	SettingForAuxTransitionOperationSetting,
+	SettingForAuxTransitionSource,
+	SourceNameClassification,
+	SourceNameObject,
+	TransitionPatternQueryType,
+	TransitionPatternResponsePattern,
+} from './enums.js'
+import { clamp, isEnumValue } from './utils.js'
+import { isBusType } from './switcher.js'
 
-import { actionOptions } from './options.js'
-import { Messages } from './enums.js'
-import { isAnyNans, rangeLimitedNumber } from './utils.js'
-import { isBusType, isSourceType } from './switcher.js'
-
+/**
+ * Action ids. The values are the ids saved against every button using the action, so they must never change — they
+ * predate this enum, which is why they are PascalCase and why SetAutoTransition is saved as SetAuxTransition.
+ */
 export enum ActionId {
 	SetBusSource = 'SetBusSource',
 	SetSourceNameDisplay = 'SetSourceNameDisplay',
@@ -19,171 +39,194 @@ export enum ActionId {
 	SetPinP = 'SetPinP',
 }
 
+/** The option keys are saved against every button too, misspelt `classisfication` included */
+export type ActionSchema = {
+	[ActionId.SetBusSource]: {
+		options: { bus: CrosspointControlBusSelection; source: CrosspointControlSourceSelection }
+	}
+	[ActionId.SetSourceNameDisplay]: { options: { classisfication: SourceNameClassification } }
+	[ActionId.SetSourceName]: { options: { source: SourceNameObject; name: string } }
+	[ActionId.SetKeySignalCoupling]: { options: { status: KeySignalCouplingStatus } }
+	[ActionId.SetAutoTransition]: {
+		options: {
+			source: SettingForAuxTransitionSource
+			effect: SettingForAuxTransitionEffect
+			operation: SettingForAuxTransitionOperationSetting
+		}
+	}
+	[ActionId.SetCutTransition]: { options: { source: SettingForAuxTransitionSource } }
+	[ActionId.SetAutoTransitionTime]: { options: { source: SettingForAuxTransitionSource; time: number } }
+	[ActionId.SetBusTransitionStatus]: {
+		options: { bus: BusType; enable: BusTransitionResponseEnable; time: number }
+	}
+	[ActionId.SetTransitionPattern]: {
+		options: { type: TransitionPatternQueryType; pattern: TransitionPatternResponsePattern }
+	}
+	[ActionId.SetPinP]: {
+		options: {
+			target: PinPStatusQueryTarget
+			xPos: number
+			yPos: number
+			size: number
+			width: PinPBorderWidth
+			colour: PinPBorderColor
+		}
+	}
+}
+
+/** The longest source name the switcher takes */
+export const SOURCE_NAME_MAX_LENGTH = 12
+
+/**
+ * An option's value, checked against its choices. In expression mode Companion skips the action when the result is not
+ * one of them, but a value is passed on unchecked, and one saved by an older version may no longer be offered.
+ */
+function choice<TEnum extends Record<string, string>>(
+	enumObject: TEnum,
+	value: unknown,
+	label: string,
+): TEnum[keyof TEnum] {
+	if (!isEnumValue(enumObject, value)) throw new Error(`${label} ${String(value)} is not valid`)
+	return value
+}
+
+/** An option's value, checked to be a number. As {@link choice}, a value is not checked by Companion */
+function finite(value: unknown, label: string): number {
+	if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error(`${label} ${String(value)} is not a number`)
+	return value
+}
+
+/** A transition time as the switcher takes it: whole frames, 0 to 999 */
+export function transitionTime(value: unknown): string {
+	return Math.round(clamp(finite(value, 'Transition time'), 0, TRANSITION_TIME_MAX)).toString()
+}
+
+/**
+ * A PinP position as the switcher takes it: hundredths of a percent, six digits, signed if negative.
+ *
+ * Rounded rather than floored: a value with two decimals is often a hair under in floating point, so 0.29 × 100 is
+ * 28.999999999999996.
+ */
+export function pinpPosition(value: unknown, label: string): string {
+	const position = clamp(finite(value, label), -100, 100)
+	const hundredths = Math.round(Math.abs(position) * 100)
+	return (position < 0 && hundredths !== 0 ? '-' : '') + hundredths.toString().padStart(6, '0')
+}
+
+/** A PinP size as the switcher takes it: hundredths of a percent, five digits */
+export function pinpSize(value: unknown): string {
+	return Math.round(clamp(finite(value, 'Size'), 0, 100) * 100)
+		.toString()
+		.padStart(5, '0')
+}
+
 export function UpdateActions(self: AvHsw10): void {
-	const actionDefs: { [id in ActionId]: CompanionActionDefinition | undefined } = {
+	const actionDefs: CompanionActionDefinitions<ActionSchema> = {
 		[ActionId.SetBusSource]: {
 			name: 'Bus Source',
 			options: actionOptions.setBusSource(),
-			callback: async (action, context) => {
-				const bus = (await context.parseVariablesInString(action.options.bus?.toString() ?? '')).trim()
-				const src = (await context.parseVariablesInString(action.options.source?.toString() ?? '')).trim()
-				if (isBusType(bus) && isSourceType(src)) {
-					await self.sendMessage(Messages.BusSettingControl, bus, src)
-				} else {
-					self.logger.warn(`Can not complete SetBusSource, invalid options. Bus ${bus}, Source: ${src}`)
-				}
+			callback: async ({ options }, context) => {
+				const bus = choice(CrosspointControlBusSelection, options.bus, 'Bus')
+				const source = choice(CrosspointControlSourceSelection, options.source, 'Source')
+				await self.sendMessage(Messages.BusSettingControl, [bus, source], context.signal)
 			},
-			subscribe: async (action, context) => {
-				const bus = (await context.parseVariablesInString(action.options.bus?.toString() ?? '')).trim()
-				if (isBusType(bus)) await self.sendMessage(Messages.BusStatusQuery, bus)
-			},
-			learn: async (action, context) => {
-				const bus = (await context.parseVariablesInString(action.options.bus?.toString() ?? '')).trim()
-				const source = self.state.getBusSource(bus)
-				if (source) {
-					return {
-						...action.options,
-						source: source,
-					}
-				}
-				return undefined
+			learn: ({ options }) => {
+				if (!isBusType(options.bus)) return undefined
+				const source = self.state.getBusSource(options.bus)
+				return source === undefined ? undefined : { source }
 			},
 		},
 		[ActionId.SetSourceNameDisplay]: {
 			name: 'Source Name Display',
 			options: actionOptions.setSourceNameDisplay(),
-			callback: async (action, context) => {
-				self.logger.debug(action)
-				const classisfication = (
-					await context.parseVariablesInString(action.options.classisfication?.toString() ?? '')
-				).trim()
-				await self.sendMessage(Messages.SourceNameDisplay, '0', classisfication)
+			callback: async ({ options }, context) => {
+				const classification = choice(SourceNameClassification, options.classisfication, 'Classification')
+				await self.sendMessage(Messages.SourceNameDisplay, ['0', classification], context.signal)
 			},
 		},
 		[ActionId.SetSourceName]: {
 			name: 'Source Name',
 			options: actionOptions.setSourceName(),
-			callback: async (action, context) => {
-				self.logger.debug(action)
-				const source = (await context.parseVariablesInString(action.options.source?.toString() ?? '')).trim()
-				const name = (await context.parseVariablesInString(action.options.name?.toString() ?? ''))
+			callback: async ({ options }, context) => {
+				const source = choice(SourceNameObject, options.source, 'Source')
+				// Companion has parsed any variables in the name already
+				const name = String(options.name ?? '')
 					.trim()
-					.substring(0, 12)
-				await self.sendMessage(Messages.SourceNameSet, '00', source, name)
+					.substring(0, SOURCE_NAME_MAX_LENGTH)
+				await self.sendMessage(Messages.SourceNameSet, ['00', source, name], context.signal)
 			},
 		},
 		[ActionId.SetKeySignalCoupling]: {
 			name: 'Key Signal Coupling',
 			options: actionOptions.setKeySignalCoupling(),
-			callback: async (action, context) => {
-				self.logger.debug(action)
-				const status = (await context.parseVariablesInString(action.options.status?.toString() ?? '')).trim()
-				await self.sendMessage(Messages.KeySignalCouplingSet, status)
+			callback: async ({ options }, context) => {
+				const status = choice(KeySignalCouplingStatus, options.status, 'Status')
+				await self.sendMessage(Messages.KeySignalCouplingSet, [status], context.signal)
 			},
 		},
 		[ActionId.SetAutoTransition]: {
 			name: 'Auto Transition',
 			options: actionOptions.setAuxTransition(),
-			callback: async (action, context) => {
-				self.logger.debug(action)
-				const source = (await context.parseVariablesInString(action.options.source?.toString() ?? '')).trim()
-				const effect = (await context.parseVariablesInString(action.options.effect?.toString() ?? '')).trim()
-				const operation = (await context.parseVariablesInString(action.options.operation?.toString() ?? '')).trim()
-				await self.sendMessage(Messages.AutoTransitionSet, source, effect, operation)
+			callback: async ({ options }, context) => {
+				const source = choice(SettingForAuxTransitionSource, options.source, 'Source')
+				const effect = choice(SettingForAuxTransitionEffect, options.effect, 'Effect')
+				const operation = choice(SettingForAuxTransitionOperationSetting, options.operation, 'Operation setting')
+				await self.sendMessage(Messages.AutoTransitionSet, [source, effect, operation], context.signal)
 			},
 		},
 		[ActionId.SetCutTransition]: {
 			name: 'Cut Transition',
 			options: actionOptions.setCutTransition(),
-			callback: async (action, context) => {
-				self.logger.debug(action)
-				const source = (await context.parseVariablesInString(action.options.source?.toString() ?? '')).trim()
-				await self.sendMessage(Messages.CutTransitionSet, source)
+			callback: async ({ options }, context) => {
+				const source = choice(SettingForAuxTransitionSource, options.source, 'Source')
+				await self.sendMessage(Messages.CutTransitionSet, [source], context.signal)
 			},
 		},
 		[ActionId.SetAutoTransitionTime]: {
 			name: 'Auto Transition Time',
 			options: actionOptions.setAutoTransitionTime(),
-			callback: async (action, context) => {
-				self.logger.debug(action)
-				const source = (await context.parseVariablesInString(action.options.source?.toString() ?? '')).trim()
-				let time = Number.parseInt(await context.parseVariablesInString(action.options.time?.toString() ?? ''))
-				if (isAnyNans(time)) {
-					self.log('warn', `Transition time must be a number`)
-				}
-				time = rangeLimitedNumber(time, 0, 999, true)
-				await self.sendMessage(Messages.AutoTransitionTimeSet, source, time.toString())
+			callback: async ({ options }, context) => {
+				const source = choice(SettingForAuxTransitionSource, options.source, 'Source')
+				await self.sendMessage(Messages.AutoTransitionTimeSet, [source, transitionTime(options.time)], context.signal)
 			},
 		},
 		[ActionId.SetBusTransitionStatus]: {
 			name: 'Bus Transition Status',
 			options: actionOptions.setBusTransitionStatus(),
-			callback: async (action, context) => {
-				self.logger.debug(action)
-				const bus = (await context.parseVariablesInString(action.options.bus?.toString() ?? '')).trim()
-				const enable = (await context.parseVariablesInString(action.options.enable?.toString() ?? '')).trim()
-				let time = Number.parseInt(await context.parseVariablesInString(action.options.time?.toString() ?? ''))
-				if (isAnyNans(time)) {
-					self.log('warn', `Transition time must be a number`)
-				}
-				time = rangeLimitedNumber(time, 0, 999, true)
-				await self.sendMessage(Messages.BusTransitionStatusSet, bus, enable, time.toString())
+			callback: async ({ options }, context) => {
+				const bus = choice(BusType, options.bus, 'Bus')
+				const enable = choice(BusTransitionResponseEnable, options.enable, 'Enable')
+				await self.sendMessage(
+					Messages.BusTransitionStatusSet,
+					[bus, enable, transitionTime(options.time)],
+					context.signal,
+				)
 			},
 		},
 		[ActionId.SetTransitionPattern]: {
 			name: 'Transition Pattern',
 			options: actionOptions.setTransitionPattern(),
-			callback: async (action, context) => {
-				self.logger.debug(action)
-				const type = (await context.parseVariablesInString(action.options.type?.toString() ?? '')).trim()
-				const pattern = (await context.parseVariablesInString(action.options.pattern?.toString() ?? '')).trim()
-				await self.sendMessage(Messages.TransitionPatternControl, type, pattern)
+			callback: async ({ options }, context) => {
+				const type = choice(TransitionPatternQueryType, options.type, 'Type')
+				const pattern = choice(TransitionPatternResponsePattern, options.pattern, 'Pattern')
+				await self.sendMessage(Messages.TransitionPatternControl, [type, pattern], context.signal)
 			},
 		},
 		[ActionId.SetPinP]: {
 			name: 'Picture In Picture',
 			options: actionOptions.setPinP(),
-			callback: async (action, context) => {
-				self.logger.debug(action)
-				const target = (await context.parseVariablesInString(action.options.target?.toString() ?? '')).trim()
-				let xPos = Number.parseFloat(await context.parseVariablesInString(action.options.xPos?.toString() ?? ''))
-				let yPos = Number.parseFloat(await context.parseVariablesInString(action.options.yPos?.toString() ?? ''))
-				let size = Number.parseFloat(await context.parseVariablesInString(action.options.size?.toString() ?? ''))
-				const width = (await context.parseVariablesInString(action.options.width?.toString() ?? '4')).trim()
-				const colour = (await context.parseVariablesInString(action.options.colour?.toString() ?? '4')).trim()
-				if (isAnyNans(xPos, yPos, size)) {
-					self.logger.warn(
-						`Picture in Picture supplied invalid position/size arguments - must be numbers ${action.options.xPos}, ${action.options.yPos}, ${action.options.size}`,
-					)
-					return
-				}
-				xPos = rangeLimitedNumber(xPos, -100, 100)
-				yPos = rangeLimitedNumber(yPos, -100, 100)
-				size = rangeLimitedNumber(size, 0, 100)
-				const xNeg: boolean = xPos < 0
-				const yNeg: boolean = yPos < 0
-				let xPosStr = Math.floor(Math.abs(xPos * 100))
-					.toString()
-					.substring(0, 6)
-					.padStart(6, '0')
-				if (xNeg) {
-					xPosStr = '-' + xPosStr
-				}
-				let yPosStr = Math.floor(Math.abs(yPos * 100))
-					.toString()
-					.substring(0, 6)
-					.padStart(6, '0')
-				if (yNeg) {
-					yPosStr = '-' + yPosStr
-				}
-				const sizeStr = Math.floor(size * 100)
-					.toString()
-					.substring(0, 5)
-					.padStart(5, '0')
+			callback: async ({ options }, context) => {
+				const target = choice(PinPStatusQueryTarget, options.target, 'Target')
+				const xPos = pinpPosition(options.xPos, 'X position')
+				const yPos = pinpPosition(options.yPos, 'Y position')
+				const size = pinpSize(options.size)
+				// Unchanged unless set, as before these options had defaults
+				const width = choice(PinPBorderWidth, options.width ?? PinPBorderWidth.NoneOfTheAbove, 'Border width')
+				const colour = choice(PinPBorderColor, options.colour ?? PinPBorderColor.NoneOfTheAbove, 'Border colour')
 				self.logger.console(
-					`Set PinP Action. Target: ${target}, xPos: ${xPosStr}, yPos: ${yPosStr}, size: ${sizeStr}, width: ${width}, colour: ${colour}`,
+					`Set PinP Action. Target: ${target}, xPos: ${xPos}, yPos: ${yPos}, size: ${size}, width: ${width}, colour: ${colour}`,
 				)
-				await self.sendMessage(Messages.PinPSet, target, xPosStr, yPosStr, sizeStr, width, colour)
+				await self.sendMessage(Messages.PinPSet, [target, xPos, yPos, size, width, colour], context.signal)
 			},
 		},
 	}

@@ -1,0 +1,168 @@
+import { vi } from 'vitest'
+import type {
+	CompanionActionCallbackContext,
+	CompanionActionDefinitions,
+	CompanionActionEvent,
+	CompanionActionInfo,
+	CompanionFeedbackBooleanEvent,
+	CompanionFeedbackCallbackContext,
+	CompanionFeedbackContext,
+	CompanionFeedbackDefinitions,
+	CompanionFeedbackInfo,
+	CompanionFeedbackValueEvent,
+	CompanionLearnCallbackContext,
+	CompanionOptionValues,
+	JsonValue,
+} from '@companion-module/base'
+import type AvHsw10 from '../main.js'
+import { UpdateActions, type ActionId, type ActionSchema } from '../actions.js'
+import { UpdateFeedbacks, type FeedbackId, type FeedbackSchema } from '../feedbacks.js'
+import type { CrosspointControlBusSelection } from '../enums.js'
+import { Logger } from '../logger.js'
+import { FeedbackSubscriptions } from '../subscriptions.js'
+import { SwitcherState } from '../switcher.js'
+
+function createMocks() {
+	return {
+		sendMessage: vi.fn<AvHsw10['sendMessage']>(async () => {}),
+		setActionDefinitions: vi.fn<(defs: CompanionActionDefinitions<ActionSchema>) => void>(),
+		setFeedbackDefinitions: vi.fn<(defs: CompanionFeedbackDefinitions<FeedbackSchema>) => void>(),
+	}
+}
+
+export type FakeInstance = { self: AvHsw10 } & ReturnType<typeof createMocks>
+
+/**
+ * A plain object standing in for the instance, for the definitions to be built from. The bus state and the feedback
+ * subscriptions are real; everything that would reach Companion or the switcher is a mock.
+ */
+export function fakeInstance(): FakeInstance {
+	const mocks = createMocks()
+	const self = {
+		state: new SwitcherState(),
+		busSourceFeedbacks: new FeedbackSubscriptions<CrosspointControlBusSelection>(),
+		logger: new Logger({ log: () => {} }),
+		...mocks,
+	} as unknown as AvHsw10
+	return { self, ...mocks }
+}
+
+export function actionDefinitions(fake: FakeInstance): CompanionActionDefinitions<ActionSchema> {
+	UpdateActions(fake.self)
+	return fake.setActionDefinitions.mock.calls[0][0]
+}
+
+export function feedbackDefinitions(fake: FakeInstance): CompanionFeedbackDefinitions<FeedbackSchema> {
+	UpdateFeedbacks(fake.self)
+	return fake.setFeedbackDefinitions.mock.calls[0][0]
+}
+
+// The definitions' hooks are typed per action. These take any options, as the values Companion passes are not checked
+type AnyCallback = (event: CompanionActionEvent, context: CompanionActionCallbackContext) => Promise<void> | void
+type AnyLearn = (info: CompanionActionInfo | CompanionFeedbackInfo, context: CompanionLearnCallbackContext) => unknown
+type AnyFeedbackCallback = (event: CompanionFeedbackBooleanEvent, context: CompanionFeedbackCallbackContext) => boolean
+type AnyValueFeedbackCallback = (
+	event: CompanionFeedbackValueEvent,
+	context: CompanionFeedbackCallbackContext,
+) => JsonValue
+type AnyFeedbackHook = (info: CompanionFeedbackInfo, context: CompanionFeedbackContext) => Promise<void> | void
+
+function actionEvent(actionId: ActionId, options: CompanionOptionValues): CompanionActionEvent {
+	return { id: `action-${actionId}`, controlId: 'bank-1', actionId, surfaceId: undefined, options }
+}
+
+/**
+ * @param id the feedback instance's id. Each feedback placed on a button has its own, which stays the same when its
+ * options are changed
+ */
+function feedbackEvent(
+	feedbackId: FeedbackId,
+	options: CompanionOptionValues,
+	id = `feedback-${feedbackId}`,
+	type: CompanionFeedbackInfo['type'] = 'boolean',
+): CompanionFeedbackInfo {
+	return {
+		type,
+		id,
+		controlId: 'bank-1',
+		feedbackId,
+		options,
+		previousOptions: null,
+	}
+}
+
+/** Runs an action's callback as Companion would, with the option values already resolved */
+export async function runAction(
+	defs: CompanionActionDefinitions<ActionSchema>,
+	actionId: ActionId,
+	options: CompanionOptionValues,
+	signal = new AbortController().signal,
+): Promise<void> {
+	const def = defs[actionId]
+	if (!def) throw new Error(`${actionId} is not defined`)
+	await (def.callback as AnyCallback)(actionEvent(actionId, options), { type: 'action', signal } as never)
+}
+
+export async function learnAction(
+	defs: CompanionActionDefinitions<ActionSchema>,
+	actionId: ActionId,
+	options: CompanionOptionValues,
+	signal = new AbortController().signal,
+): Promise<unknown> {
+	const learn = (defs[actionId] || undefined)?.learn as AnyLearn | undefined
+	if (!learn) throw new Error(`${actionId} has no learn`)
+	return await learn(actionEvent(actionId, options), { type: 'action', signal })
+}
+
+export function checkFeedback(
+	defs: CompanionFeedbackDefinitions<FeedbackSchema>,
+	feedbackId: FeedbackId,
+	options: CompanionOptionValues,
+	id?: string,
+): boolean {
+	const def = defs[feedbackId]
+	if (!def) throw new Error(`${feedbackId} is not defined`)
+	return (def.callback as AnyFeedbackCallback)(feedbackEvent(feedbackId, options, id), {
+		type: 'feedback',
+		signal: new AbortController().signal,
+	})
+}
+
+/** Runs a value feedback's callback, giving its result */
+export function feedbackValue(
+	defs: CompanionFeedbackDefinitions<FeedbackSchema>,
+	feedbackId: FeedbackId,
+	options: CompanionOptionValues,
+	id?: string,
+): JsonValue {
+	const def = defs[feedbackId]
+	if (!def) throw new Error(`${feedbackId} is not defined`)
+	if (def.type !== 'value') throw new Error(`${feedbackId} is not a value feedback`)
+	return (def.callback as AnyValueFeedbackCallback)(feedbackEvent(feedbackId, options, id, 'value'), {
+		type: 'feedback',
+		signal: new AbortController().signal,
+	})
+}
+
+/** As Companion does when a feedback is removed or disabled */
+export async function unsubscribeFeedback(
+	defs: CompanionFeedbackDefinitions<FeedbackSchema>,
+	feedbackId: FeedbackId,
+	options: CompanionOptionValues,
+	id?: string,
+): Promise<void> {
+	const unsubscribe = (defs[feedbackId] || undefined)?.unsubscribe as AnyFeedbackHook | undefined
+	if (!unsubscribe) throw new Error(`${feedbackId} has no unsubscribe`)
+	await unsubscribe(feedbackEvent(feedbackId, options, id), { type: 'feedback' })
+}
+
+export async function learnFeedback(
+	defs: CompanionFeedbackDefinitions<FeedbackSchema>,
+	feedbackId: FeedbackId,
+	options: CompanionOptionValues,
+	signal = new AbortController().signal,
+): Promise<unknown> {
+	const learn = (defs[feedbackId] || undefined)?.learn as AnyLearn | undefined
+	if (!learn) throw new Error(`${feedbackId} has no learn`)
+	return await learn(feedbackEvent(feedbackId, options), { type: 'feedback', signal })
+}

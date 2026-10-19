@@ -1,95 +1,83 @@
-import type { AvHsw10 } from './main.js'
-import { ErrorDetails, Messages, MsgSyntax } from './enums.js'
-import { FeedbackId } from './feedbacks.js'
+import {
+	CrosspointControlBusSelection,
+	CrosspointControlSourceSelection,
+	ErrorDetails,
+	ETX,
+	Messages,
+	MsgSyntax,
+	STX,
+} from './enums.js'
+import { isBusType, isSourceType } from './switcher.js'
+import { isEnumValue } from './utils.js'
 
-export interface DisplayMessageData {
-	index: number
-	rhTallyLampState: boolean
-	textTallyState: boolean
-	lhTallyLampState: boolean
-	text: string
-}
+/**
+ * Longest a message may grow without an ETX before it is discarded. The longest reply in the protocol is a source name
+ * response, well under this
+ */
+export const MAX_MESSAGE_LENGTH = 256
 
-// eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
-export function isMessage(test: any): test is Messages {
-	return Object.values(Messages).indexOf(test) !== -1
-}
+export type ParsedMessage =
+	/** An ABUS or ABSC: the source now on a bus */
+	| {
+			type: 'busSource'
+			command: Messages.BusSettingResponse | Messages.BusStatusResponse
+			bus: CrosspointControlBusSelection
+			source: CrosspointControlSourceSelection
+	  }
+	/** An EROR. The detail is undefined if it is not one the protocol defines */
+	| { type: 'error'; detail: ErrorDetails | undefined; text: string }
+	/** A known message this module takes no state from */
+	| { type: 'ignored'; command: Messages; text: string }
+	/** Anything else, including an ABUS or ABSC naming an unknown bus or source */
+	| { type: 'invalid'; text: string }
 
-// eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
-export function isError(test: any): test is ErrorDetails {
-	return Object.values(ErrorDetails).indexOf(test) !== -1
-}
+/**
+ * Splits a byte stream into messages. Each message is the text between an STX and the next ETX, so bytes outside of
+ * one are dropped, and a message split over several chunks is held until its ETX arrives.
+ */
+export class FrameReader {
+	#pending = ''
 
-export const parseTcpMsg = (msg: string, self: AvHsw10): void => {
-	msg = msg.replaceAll(MsgSyntax.Stx, '').replaceAll(MsgSyntax.Etx, '')
-	const data = msg.split(MsgSyntax.Sep).map((element) => element.trim())
-	const cmd = data[0]
-	if (isMessage(cmd)) {
-		try {
-			switch (cmd) {
-				case Messages.AutoTransitionTimeResponse:
-					self.logger.console(`Message type: AutoTransitionTimeResponse`)
-					break
-				case Messages.BusCrosspointResponse:
-					self.logger.console(`Message type: BusCrosspointResponse`)
-					break
-				case Messages.BusSettingResponse:
-					self.logger.console(`Message type: BusSettingResponse`)
-					if (data.length == 3) {
-						if (self.state.setBusSource(data[1], data[2])) {
-							self.addFeedbackToCheck(FeedbackId.BusSource)
-						}
-					}
-					break
-				case Messages.BusStatusResponse:
-					self.logger.console(`Message type: BusStatusResponse`)
-					if (data.length == 3) {
-						if (self.state.setBusSource(data[1], data[2])) {
-							self.addFeedbackToCheck(FeedbackId.BusSource)
-						}
-					}
-					break
-				case Messages.BusTransitionStatusResponse:
-					self.logger.console(`Message type: BusTransitionStatusResponse`)
-					break
-				case Messages.KeySignalCouplingResponse:
-					self.logger.console(`Message type: KeySignalCouplingResponse`)
-					break
-				case Messages.PinPStatusResponse:
-					self.logger.console(`Message type: PinPStatusResponse`)
-					break
-				case Messages.SourceNameResponse:
-					self.logger.console(`Message type: SourceNameResponse`)
-					break
-				case Messages.TransitionPatternResponse:
-					self.logger.console(`Message type: TransitionPatternResponse`)
-					break
-				case Messages.Error:
-					self.logger.console(`Message type: Error`)
-					if (isError(data[1])) {
-						switch (data[1]) {
-							case ErrorDetails.OutOfRangeParameter:
-								self.logger.warn('Error, Parameter out of range')
-								break
-							case ErrorDetails.SyntaxError:
-								self.logger.warn('Syntax Error')
-						}
-					} else {
-						self.logger.warn(`Error recieved with invalid error details. ${msg}`)
-					}
-
-					break
-				default:
-					self.logger.debug(`Message unexpectedly Control or Query type: ${data[0]}`)
-			}
-		} catch (e) {
-			self.logger.warn(`Message parsing failed: ${e}`)
+	/** @returns the text of each message completed by the chunk, without its STX and ETX */
+	push(chunk: Buffer): string[] {
+		// latin1 maps every byte to one character, so a chunk can't end part way through one
+		this.#pending += chunk.toString('latin1')
+		const messages: string[] = []
+		let end: number
+		while ((end = this.#pending.indexOf(ETX)) !== -1) {
+			const start = this.#pending.lastIndexOf(STX, end)
+			if (start !== -1) messages.push(this.#pending.slice(start + 1, end))
+			this.#pending = this.#pending.slice(end + 1)
 		}
+		const start = this.#pending.lastIndexOf(STX)
+		this.#pending = start === -1 || this.#pending.length - start > MAX_MESSAGE_LENGTH ? '' : this.#pending.slice(start)
+		return messages
+	}
+
+	reset(): void {
+		this.#pending = ''
 	}
 }
 
-export const parseUdpMsg = (msg: Buffer, self: AvHsw10): void => {
-	const str = String.fromCodePoint(...msg)
-	self.logger.debug(`Parsing UDP message: ${str}`)
-	parseTcpMsg(str, self)
+/** The messages in a UDP datagram, which carries whole messages only */
+export function messagesInDatagram(datagram: Buffer): string[] {
+	return new FrameReader().push(datagram)
+}
+
+/** @param text a message without its STX and ETX */
+export function parseMessage(text: string): ParsedMessage {
+	const [command, ...args] = text.split(MsgSyntax.Sep).map((element) => element.trim())
+	if (!isEnumValue(Messages, command)) return { type: 'invalid', text }
+	switch (command) {
+		case Messages.BusSettingResponse:
+		case Messages.BusStatusResponse: {
+			const [bus, source] = args
+			if (args.length !== 2 || !isBusType(bus) || !isSourceType(source)) return { type: 'invalid', text }
+			return { type: 'busSource', command, bus, source }
+		}
+		case Messages.Error:
+			return { type: 'error', detail: isEnumValue(ErrorDetails, args[0]) ? args[0] : undefined, text }
+		default:
+			return { type: 'ignored', command, text }
+	}
 }

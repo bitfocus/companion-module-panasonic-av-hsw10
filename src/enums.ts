@@ -131,7 +131,7 @@ export enum BusCrosspointResponseTallyInfo {
 	ON = '1',
 }
 
-export enum SourceNameClassicifcation {
+export enum SourceNameClassification {
 	DEFAULT = '00',
 	USER = '01',
 }
@@ -168,7 +168,7 @@ export enum SettingForAuxTransitionEffect {
 }
 
 export enum SettingForAuxTransitionOperationSetting {
-	TiggerOn = '0',
+	TriggerOn = '0',
 	OnTake = '1',
 	OffTake = '2',
 }
